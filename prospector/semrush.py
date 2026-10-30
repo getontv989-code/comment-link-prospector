@@ -73,21 +73,37 @@ def _num(v):
         return 0
 
 
+_dead_keys = set()
+
+
+def _api_keys():
+    """SEMRUSH_API_KEY may hold several keys, comma separated, one per account you pay for.
+    A key whose units run out is skipped for the rest of the run."""
+    return [k.strip() for k in config.SEMRUSH_API_KEY.split(",") if k.strip() and k.strip() not in _dead_keys]
+
+
 def api_backlinks(domain, budget_left):
     rows_wanted = min(config.SEMRUSH_ROWS, budget_left // UNITS_PER_BACKLINK_ROW)
     if rows_wanted <= 0:
         return [], 0
-    params = {
-        "key": config.SEMRUSH_API_KEY, "type": "backlinks", "target": domain,
-        "target_type": "root_domain", "display_limit": rows_wanted,
-        "export_columns": "page_ascore,source_title,source_url,target_url,anchor,nofollow,form,frame",
-        "display_sort": "page_ascore_desc", "display_filter": "+|type||follow",
-    }
-    r = net.session().get(config.SEMRUSH_DATABASE_HOST + "/analytics/v1/", params=params,
-                          timeout=60)
-    text = r.text.strip()
-    if text.startswith("ERROR"):
-        log.warning("Semrush API error for %s: %s", domain, text[:120])
+    text = ""
+    for key in _api_keys():
+        params = {
+            "key": key, "type": "backlinks", "target": domain,
+            "target_type": "root_domain", "display_limit": rows_wanted,
+            "export_columns": "page_ascore,source_title,source_url,target_url,anchor,nofollow,form,frame",
+            "display_sort": "page_ascore_desc",  # best pages first; nofollow kept on purpose
+        }
+        r = net.session().get(config.SEMRUSH_DATABASE_HOST + "/analytics/v1/", params=params, timeout=60)
+        text = r.text.strip()
+        if text.startswith("ERROR") and ("BALANCE" in text.upper() or "LIMIT" in text.upper()
+                                         or "WRONG KEY" in text.upper()):
+            log.warning("Semrush key ...%s is out (%s); trying the next one", key[-4:], text[:60])
+            _dead_keys.add(key)
+            continue
+        break
+    if not text or text.startswith("ERROR"):
+        log.warning("Semrush API error for %s: %s", domain, text[:120] or "no usable key")
         return [], 0
     lines = text.splitlines()
     out = []
