@@ -195,3 +195,31 @@ def test_most_commented_posts_from_recent_comments(monkeypatch):
     monkeypatch.setattr(net, "fetch_json", lambda url, **k: data if "/wp-json/wp/v2/comments" in url else None)
     monkeypatch.setattr(net, "fetch", lambda url, **k: net.Page(url, 404, ""))
     assert listicles.posts_for_homepage("https://b.com/", limit=1) == ["https://b.com/post-b/"]
+
+
+def test_fetch_gives_up_on_endless_stream(monkeypatch):
+    """A homepage that streams forever (internet radio and the like) must not hang the run."""
+    import time
+
+    class Endless(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            try:
+                while True:
+                    self.wfile.write(b"<p>x</p>" * 100)
+                    time.sleep(0.05)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Endless)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    t0 = time.time()
+    page = net.fetch(f"http://127.0.0.1:{srv.server_address[1]}/", timeout=1)
+    srv.shutdown()
+    assert page.status == 200 and page.html
+    assert time.time() - t0 < 10

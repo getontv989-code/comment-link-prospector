@@ -105,6 +105,7 @@ def is_keyword_anchor(anchor, domain):
 def score_domains(stats):
     """stats: {domain: {"pages": set, "dofollow_pages": set}} -> sorted list of dict rows."""
     names = list(stats)
+    log.info("stage 5: scoring %d commenter domains", len(names))
     opr = open_pagerank(names)
     with ThreadPoolExecutor(config.WORKERS) as ex:
         live = dict(zip(names, ex.map(is_live, names)))

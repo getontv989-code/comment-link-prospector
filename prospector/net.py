@@ -49,24 +49,38 @@ class Page:
         return self.status is not None and 200 <= self.status < 400 and bool(self.html)
 
 
+MAX_BYTES = 8_000_000
+
+
 def fetch(url, timeout=None, **kw):
+    """GET with a hard wall-clock limit and size cap. A plain requests timeout only bounds
+    each socket read, so a server that trickles bytes or streams forever (radio, video)
+    would otherwise hold the crawl indefinitely."""
+    timeout = timeout or config.TIMEOUT
     try:
-        r = session().get(url, timeout=(8, timeout or config.TIMEOUT), allow_redirects=True, **kw)
-        ctype = r.headers.get("content-type", "")
-        text = r.text if ("html" in ctype or "xml" in ctype or "json" in ctype or not ctype) else ""
-        return Page(url, r.status_code, text, dict(r.headers), r.url)
+        with session().get(url, timeout=(8, timeout), allow_redirects=True, stream=True, **kw) as r:
+            ctype = r.headers.get("content-type", "")
+            text = ""
+            if "html" in ctype or "xml" in ctype or "json" in ctype or not ctype:
+                end, body = time.time() + timeout * 2, bytearray()
+                for chunk in r.iter_content(65536):
+                    body += chunk
+                    if len(body) > MAX_BYTES or time.time() > end:
+                        break
+                text = body.decode(r.encoding or "utf-8", errors="replace")
+            return Page(url, r.status_code, text, dict(r.headers), r.url)
     except requests.RequestException as e:
         log.debug("fetch failed %s: %s", url, e)
         return Page(url, None, "", {}, url)
 
 
 def fetch_json(url, timeout=None, **kw):
-    try:
-        r = session().get(url, timeout=timeout or config.TIMEOUT, **kw)
-        if r.status_code == 200:
-            return r.json()
-    except (requests.RequestException, ValueError):
-        pass
+    page = fetch(url, timeout, **kw)
+    if page.status == 200:
+        try:
+            return json.loads(page.html)
+        except ValueError:
+            pass
     return None
 
 
