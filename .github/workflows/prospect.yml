@@ -13,6 +13,10 @@ on:
         description: "Re-check pages already checked in earlier runs"
         type: boolean
         default: false
+      harvest:
+        description: "Only list every outbound link on the pages in inputs/harvest_urls.txt"
+        type: boolean
+        default: false
   push:
     paths:
       - "inputs/semrush/**"     # dropping a Semrush export in starts a run
@@ -62,7 +66,7 @@ jobs:
           OPENPAGERANK_API_KEY: ${{ secrets.OPENPAGERANK_API_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
-        run: python -m prospector
+        run: python -m prospector ${{ inputs.harvest && '--harvest inputs/harvest_urls.txt' || '' }}
 
       - name: Save results to the repo
         if: always()
@@ -75,6 +79,7 @@ jobs:
             cp out/prospects.csv "results/prospects-$stamp.csv"
             cp out/*.csv out/summary.json results/ 2>/dev/null || true
           fi
+          cp out/harvest_*.csv results/ 2>/dev/null || true
           git add results state/seen_pages.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "Prospects $stamp"
           git pull --rebase --autostash -X theirs || true  # this run's results win
