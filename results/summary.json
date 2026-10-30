@@ -1,25 +1,26 @@
 {
-  "finished_at": "2026-10-30 07:18",
-  "minutes": 13.7,
-  "pages_checked": 231,
-  "prospects": 115,
-  "prospects_dofollow": 0,
-  "edu_gov": 2,
-  "commenter_domains": 47,
+  "finished_at": "2026-10-30 17:10",
+  "minutes": 9.0,
+  "pages_checked": 291,
+  "prospects": 2,
+  "prospects_dofollow": 2,
+  "edu_gov": 0,
+  "high_value": 0,
+  "commenter_domains": 837,
   "semrush_domains": [
-    "binance.com",
-    "fandango.com",
-    "dwpsgrnoida.com",
-    "efficway.co.uk",
-    "brendanihmig.com"
+    "smalltownwoman.com",
+    "bloggingfromparadise.com",
+    "jerseygirlcooks.com",
+    "thelittlekitchen.net",
+    "laurenslatest.com"
   ],
   "semrush_mode": "off",
   "semrush_units_used": 0,
   "semrush_data_missing_for": [
-    "binance.com",
-    "brendanihmig.com",
-    "dwpsgrnoida.com",
-    "efficway.co.uk",
-    "fandango.com"
+    "bloggingfromparadise.com",
+    "jerseygirlcooks.com",
+    "laurenslatest.com",
+    "smalltownwoman.com",
+    "thelittlekitchen.net"
   ]
 }
