@@ -1,0 +1,84 @@
+name: Find blog comment prospects
+
+on:
+  schedule:
+    - cron: "0 3 * * *"        # every day at 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      max_targets:
+        description: "Max comment pages to check this run"
+        default: "400"
+      recrawl:
+        description: "Re-check pages already checked in earlier runs"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - "inputs/semrush/**"     # dropping a Semrush export in starts a run
+      - "config/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prospector
+  cancel-in-progress: false
+
+jobs:
+  prospect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Tests
+        run: |
+          pip install pytest
+          python -m pytest -q tests
+
+      - name: Run prospector
+        env:
+          MAX_TARGETS: ${{ inputs.max_targets || vars.MAX_TARGETS || '400' }}
+          RECRAWL: ${{ inputs.recrawl || 'false' }}
+          TOP_DOMAINS: ${{ vars.TOP_DOMAINS || '5' }}
+          MIN_AUTHORITY: ${{ vars.MIN_AUTHORITY || '30' }}
+          # Semrush API is off unless SEMRUSH_MODE=api AND a unit budget are set as repo variables.
+          SEMRUSH_MODE: ${{ vars.SEMRUSH_MODE || 'off' }}
+          SEMRUSH_UNIT_BUDGET: ${{ vars.SEMRUSH_UNIT_BUDGET || '0' }}
+          SEMRUSH_API_KEY: ${{ secrets.SEMRUSH_API_KEY }}
+          OPENPAGERANK_API_KEY: ${{ secrets.OPENPAGERANK_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+        run: python -m prospector
+
+      - name: Save results to the repo
+        if: always()
+        run: |
+          git config user.name "prospector-bot"
+          git config user.email "prospector-bot@users.noreply.github.com"
+          mkdir -p results
+          stamp=$(date -u +%Y-%m-%d)
+          if [ -f out/prospects.csv ]; then
+            cp out/prospects.csv "results/prospects-$stamp.csv"
+            cp out/*.csv out/summary.json results/ 2>/dev/null || true
+          fi
+          git add results state/seen_pages.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "Prospects $stamp"
+          git pull --rebase --autostash || true
+          git push || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prospects
+          path: out/

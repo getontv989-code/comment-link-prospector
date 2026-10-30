@@ -1,0 +1,1 @@
+# Extra domains to ignore as commenters (one per line). Social and big platforms are already built in.
