@@ -127,7 +127,7 @@ def analyze(page):
             dofollow = not (rel & NOFOLLOW_RELS) and not res["page_nofollow"]
             if "disq.us" in href or "/goto/" in href or "/out/" in href:
                 dofollow = False  # redirect wrapper, link equity does not pass to the target
-            res["links"].append({"url": href, "domain": d, "kind": kind,
+            res["links"].append({"url": href, "domain": d, "kind": kind, "anchor": a.get_text(" ", strip=True)[:120],
                                  "rel": " ".join(sorted(rel)), "dofollow": dofollow})
 
     ids = {el.get("id") for el in soup.find_all(id=COMMENT_ITEM_RE)}

@@ -11,6 +11,7 @@ import csv
 import io
 import logging
 import math
+import re
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -85,6 +86,22 @@ def is_live(domain):
     return False
 
 
+COMMERCIAL = re.compile(
+    r"\b(best|top|cheap|buy|online|service|services|agency|company|repair|near me|in [a-z]+|seo|"
+    r"backlinks?|price|cost|shop|store|rental|hire|clinic|dentist|lawyer|attorney|plumber|"
+    r"loan|casino|bet|insurance|course|training|institute|school|hospital|hotel|tour|packages?|"
+    r"digital marketing|web design|development|software|app|review|reviews|deals?|sale)\b", re.I)
+
+
+def is_keyword_anchor(anchor, domain):
+    """Link builders comment under a money keyword ('best dentist in Pune'), real readers
+    under their own name. Anchors that are just the domain or a short name don't count."""
+    a = (anchor or "").strip()
+    if not a or domain.split(".")[0] in a.lower().replace(" ", ""):
+        return False
+    return bool(COMMERCIAL.search(a)) or len(a.split()) >= 4
+
+
 def score_domains(stats):
     """stats: {domain: {"pages": set, "dofollow_pages": set}} -> sorted list of dict rows."""
     names = list(stats)
@@ -96,9 +113,13 @@ def score_domains(stats):
         s = stats[d]
         auth = authority(d, opr)
         pages, dof = len(s["pages"]), len(s["dofollow_pages"])
-        score = (10 * pages + 5 * dof + auth / 5) if live[d] else 0
+        lst, kw = len(s["listicle_pages"]), len(s["keyword_anchor_pages"])
+        # Commenting on the 'dofollow list' posts themselves, or under a money keyword,
+        # is what separates link builders from real readers.
+        score = (10 * pages + 5 * dof + 15 * lst + 8 * kw + auth / 5) if live[d] else 0
         rows.append({
             "domain": d, "pages_seen": pages, "dofollow_pages": dof,
+            "on_seo_list_pages": lst, "keyword_anchor_pages": kw,
             "tranco_rank": tranco().get(d, ""), "open_pagerank": opr.get(d, ""),
             "authority": auth, "live": live[d], "score": round(score, 1),
             "example_pages": " | ".join(sorted(s["pages"])[:3]),

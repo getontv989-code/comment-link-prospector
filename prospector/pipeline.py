@@ -62,10 +62,12 @@ def gather_targets(seen):
             return url, None
         return url, listicles.extract_targets(page.final_url, page.html)
 
+    listicle_pages = []
     with ThreadPoolExecutor(config.WORKERS) as ex:
         for listicle, found in ex.map(one, lists):
             if found is None:
                 continue
+            listicle_pages.append(listicle)
             log.info("  %s -> %d links", listicle, len(found))
             for u in found:
                 targets.setdefault(u, listicle)
@@ -78,9 +80,15 @@ def gather_targets(seen):
             for p in posts:
                 targets.setdefault(p, src)
 
-    fresh = {u: s for u, s in targets.items() if u not in seen}
-    log.info("stage 2: %d candidate comment pages (%d new)", len(targets), len(fresh))
-    return dict(list(fresh.items())[: config.MAX_TARGETS])
+    # The 'dofollow list' posts are themselves full of comments from SEO link builders,
+    # so they are checked first (always, even if seen before) as the best spammer source.
+    lists_first = {u: u for u in listicle_pages}
+    fresh = {u: s for u, s in targets.items() if u not in seen and u not in lists_first}
+    log.info("stage 2: %d listicles + %d candidate comment pages (%d new)",
+             len(lists_first), len(targets), len(fresh))
+    picked = dict(lists_first)
+    picked.update(list(fresh.items())[: max(0, config.MAX_TARGETS - len(picked))])
+    return picked
 
 
 def check_all(urls):
@@ -101,7 +109,8 @@ def run():
              sum(1 for r in results if r["comments_open"]))
 
     prospects, checked = [], []
-    stats = defaultdict(lambda: {"pages": set(), "dofollow_pages": set()})
+    stats = defaultdict(lambda: {"pages": set(), "dofollow_pages": set(), "listicle_pages": set(),
+                                 "keyword_anchor_pages": set()})
     for r in results:
         page_domain = domains.root_domain(r["url"])
         row = {
@@ -129,6 +138,10 @@ def run():
             stats[d]["pages"].add(row["page_url"])
             if l["dofollow"]:
                 stats[d]["dofollow_pages"].add(row["page_url"])
+            if targets[r["url"]] == r["url"]:
+                stats[d]["listicle_pages"].add(row["page_url"])
+            if scoring.is_keyword_anchor(l.get("anchor", ""), d):
+                stats[d]["keyword_anchor_pages"].add(row["page_url"])
         seen.add(r["url"])
 
     # stage 5
@@ -182,7 +195,8 @@ def run():
     _write(config.OUT_DIR / "prospects.csv", prospects, PROSPECT_COLUMNS)
     _write(config.OUT_DIR / "all_checked_pages.csv", checked, PROSPECT_COLUMNS)
     _write(config.OUT_DIR / "commenter_domains.csv", scored,
-           ["domain", "score", "pages_seen", "dofollow_pages", "authority", "tranco_rank",
+           ["domain", "score", "pages_seen", "on_seo_list_pages", "keyword_anchor_pages", "dofollow_pages",
+            "authority", "tranco_rank",
             "open_pagerank", "live", "example_pages"])
     _save_state(seen)
 
