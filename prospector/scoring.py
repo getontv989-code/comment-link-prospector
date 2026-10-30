@@ -93,13 +93,15 @@ COMMERCIAL = re.compile(
     r"digital marketing|web design|development|software|app|review|reviews|deals?|sale)\b", re.I)
 
 
-def is_keyword_anchor(anchor, domain):
+def is_keyword_anchor(anchor, domain, kind="author"):
     """Link builders comment under a money keyword ('best dentist in Pune'), real readers
-    under their own name. Anchors that are just the domain or a short name don't count."""
+    under their own name. Anchors that are just the domain or a short name don't count.
+    A phrase linked inside the comment text ('Website usability testing') is the classic
+    spam pattern, so two words are enough there."""
     a = (anchor or "").strip()
-    if not a or domain.split(".")[0] in a.lower().replace(" ", ""):
+    if not a or a.lower().startswith(("http", "www.")) or domain.split(".")[0] in a.lower().replace(" ", ""):
         return False
-    return bool(COMMERCIAL.search(a)) or len(a.split()) >= 4
+    return bool(COMMERCIAL.search(a)) or len(a.split()) >= (2 if kind == "body" else 4)
 
 
 def score_domains(stats):

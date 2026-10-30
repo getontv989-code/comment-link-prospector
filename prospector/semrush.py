@@ -179,7 +179,7 @@ def filter_candidates(rows):
     keep, seen = [], set()
     for r in rows:
         u = domains.normalize_url(r["source_url"])
-        if not u or u in seen or r["nofollow"]:
+        if not u or u in seen:  # nofollow is fine: Mash builds these for authority, not just link juice
             continue
         flag = domains.tld_flag(u)
         if r["page_ascore"] and r["page_ascore"] < config.MIN_AUTHORITY and not flag:

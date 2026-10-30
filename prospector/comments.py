@@ -175,6 +175,13 @@ def _blogger_feed_links(page):
     entries = ((data or {}).get("feed") or {}).get("entry") or []
     own, links, seen = domains.root_domain(page.final_url), [], set()
     for e in entries:
+        body = BeautifulSoup((e.get("content") or {}).get("$t", ""), "lxml")
+        for a in body.find_all("a", href=True):
+            href, d = a["href"], domains.root_domain(a["href"])
+            if href.startswith("http") and d and d != own and href not in seen:
+                seen.add(href)
+                links.append({"url": href, "domain": d, "kind": "body", "anchor": a.get_text(" ", strip=True)[:120],
+                              "rel": "unknown (comment feed)", "dofollow": False})
         for au in e.get("author") or []:
             href = (au.get("uri") or {}).get("$t", "")
             d = domains.root_domain(href) if href.startswith("http") else ""
