@@ -1,8 +1,12 @@
-"""HTTP fetching with retries, plus a lazily started headless browser."""
+"""HTTP fetching with retries, plus a headless browser for pages that need one."""
+import json
 import logging
+import os
+import signal
+import subprocess
+import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -67,13 +71,12 @@ def fetch_json(url, timeout=None, **kw):
 
 
 # ---------------------------------------------------------------- browser
-# Playwright is only started if a page actually needs it, and is used from one
-# thread at a time (sync API objects are not thread-safe).
+# Each render runs Chromium in its own child process with a hard time limit, so one
+# page that hangs the browser can never stall the whole crawl. BROWSERS caps how many
+# run at once.
 
-# Each browser thread owns its own Chromium; crawler threads queue for a free one.
-_browser_thread = ThreadPoolExecutor(max_workers=config.BROWSERS, thread_name_prefix="browser")
-_browser_local = threading.local()
-_started = []
+_slots = threading.BoundedSemaphore(config.BROWSERS)
+RENDER_LIMIT = 100  # seconds per page, including browser start-up
 
 # Clicks in-page buttons that reveal comments or the comment form. Links that would
 # navigate away are skipped, so the crawler never leaves the page or submits anything.
@@ -99,36 +102,52 @@ _CLICK_JS = r"""
 """
 
 
-def _get_browser():
-    if getattr(_browser_local, "browser", None) is None:
-        from playwright.sync_api import sync_playwright
-        _browser_local.pw = sync_playwright().start()
-        _browser_local.browser = _browser_local.pw.chromium.launch(args=["--no-sandbox"])
-        _started.append(1)
-    return _browser_local.browser
-
-
 def render(url, max_scrolls=60, max_clicks=15):
-    """Playwright's sync API only works on the thread that started it, so every browser
-    call runs on one dedicated thread and crawler threads wait for their turn."""
+    """Scroll and click the page in headless Chromium (see _render) in a child process
+    that is killed if it runs past RENDER_LIMIT."""
     if not config.USE_BROWSER:
         return None
+    with _slots:
+        proc = subprocess.Popen([sys.executable, "-m", "prospector.net", url, str(max_scrolls), str(max_clicks)],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True,
+                                cwd=config.ROOT)
+        try:
+            out, _ = proc.communicate(timeout=RENDER_LIMIT)
+        except subprocess.TimeoutExpired:
+            log.info("render timed out, killed: %s", url)
+            _kill(proc)
+            return None
+        finally:
+            _kill(proc)  # also takes down any Chromium left behind
     try:
-        return _browser_thread.submit(_render, url, max_scrolls, max_clicks).result()
-    except Exception as e:
-        log.debug("render failed %s: %s", url, e)
+        d = json.loads(out)
+    except ValueError:
         return None
+    return Page(url, d["status"], d["html"], {}, d["final_url"], rendered=True) if d else None
+
+
+def _kill(proc):
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    proc.wait()
 
 
 def _render(url, max_scrolls, max_clicks):
     """Open the page in headless Chromium, scroll to the very bottom until the page
     stops growing, click any 'load more comments' / 'leave a comment' style buttons,
     and return the rendered HTML (including same-origin iframes such as comment forms)."""
-    try:
-        browser = _get_browser()
-    except Exception as e:  # Playwright not installed
-        log.warning("headless browser unavailable: %s", e)
-        return None
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox"])
+        try:
+            return _render_in(browser, url, max_scrolls, max_clicks)
+        finally:
+            browser.close()
+
+
+def _render_in(browser, url, max_scrolls, max_clicks):
     ctx = browser.new_context(user_agent=config.USER_AGENT, viewport={"width": 1366, "height": 900})
     page = ctx.new_page()
     page.route("**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,mp4,webm}", lambda r: r.abort())
@@ -171,9 +190,9 @@ def _render(url, max_scrolls, max_clicks):
 
 
 def close_browser():
-    """Stop every browser thread's Chromium (each must be closed on its own thread)."""
-    global _browser_thread
-    if _started:
-        _browser_thread.shutdown(wait=True)
-        _browser_thread = ThreadPoolExecutor(max_workers=config.BROWSERS, thread_name_prefix="browser")
-        _started.clear()
+    """Nothing to clean up: every render's Chromium exits with its child process."""
+
+
+if __name__ == "__main__":
+    _p = _render(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))
+    sys.stdout.write(json.dumps(_p and {"status": _p.status, "html": _p.html, "final_url": _p.final_url}))

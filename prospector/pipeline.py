@@ -92,8 +92,25 @@ def gather_targets(seen):
 
 
 def check_all(urls):
+    """Check pages in parallel, logging progress. Pages not started within
+    CRAWL_MINUTES are skipped so a run always finishes and saves what it found."""
+    deadline = time.time() + config.CRAWL_MINUTES * 60
+    done = []
+
+    def one(url):
+        if time.time() > deadline:
+            return None
+        r = comments.check_page(url)
+        done.append(1)
+        if len(done) % 25 == 0:
+            log.info("checked %d/%d pages", len(done), len(urls))
+        return r
+
     with ThreadPoolExecutor(config.WORKERS) as ex:
-        return list(ex.map(comments.check_page, urls))
+        results = list(ex.map(one, urls))
+    if len(done) < len(urls):
+        log.warning("time limit: skipped %d pages", len(urls) - len(done))
+    return results  # None where a page was skipped
 
 
 def run():
@@ -104,7 +121,7 @@ def run():
 
     # stages 1-3
     targets = gather_targets(seen)
-    results = check_all(list(targets))
+    results = [r for r in check_all(list(targets)) if r]
     log.info("stage 3: checked %d pages, %d open", len(results),
              sum(1 for r in results if r["comments_open"]))
 
@@ -167,6 +184,8 @@ def run():
         cand = [(d, c) for d, c in cand if c["source_url"] not in seen][: config.MAX_TARGETS]
         verified = check_all([c["source_url"] for _, c in cand])
         for (d, c), r in zip(cand, verified):
+            if r is None:
+                continue
             seen.add(c["source_url"])
             linked = any(l["domain"] == d for l in r["links"])
             row = {
