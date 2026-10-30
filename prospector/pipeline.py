@@ -121,6 +121,11 @@ def run():
             d = l["domain"]
             if d == page_domain or domains.is_blocked(d, block):
                 continue
+            # A link inside the comment text is usually a reference (a news source, a shop),
+            # not the commenter's own site, unless it is dofollow. Top-10k sites are never
+            # the link builders we are after.
+            if (l["kind"] == "body" and not l["dofollow"]) or 0 < scoring.tranco().get(d, 0) <= 10000:
+                continue
             stats[d]["pages"].add(row["page_url"])
             if l["dofollow"]:
                 stats[d]["dofollow_pages"].add(row["page_url"])

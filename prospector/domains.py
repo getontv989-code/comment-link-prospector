@@ -66,7 +66,8 @@ def normalize_url(url):
     if parts.scheme not in ("http", "https"):
         return ""
     query = "&".join(q for q in parts.query.split("&")
-                     if q and not q.lower().startswith(("utm_", "fbclid", "gclid", "replytocom")))
+                     if q and not q.lower().startswith(("utm_", "fbclid", "gclid", "replytocom", "sc="))
+                     and q.lower() != "m=1")
     return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path or "/", query, ""))
 
 

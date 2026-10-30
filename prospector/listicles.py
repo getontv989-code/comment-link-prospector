@@ -60,7 +60,8 @@ def extract_targets(listicle_url, html):
         if not u or SKIP_EXT.search(u):
             continue
         d = domains.root_domain(u)
-        if not d or d == own or (domains.is_blocked(d, block) and not domains.tld_flag(u)):
+        keep_anyway = domains.tld_flag(u) or "blogger.com/comment/" in u  # Blogger's own comment page
+        if not d or d == own or (domains.is_blocked(d, block) and not keep_anyway):
             continue
         if u not in seen:
             seen.add(u)
@@ -68,13 +69,33 @@ def extract_targets(listicle_url, html):
     return out
 
 
+def _most_commented_from_comments(base):
+    """WordPress lists a site's recent comments (REST API, or the comments RSS feed). Each
+    comment links to its post, so counting them finds the posts commenters are active on,
+    which is where comment link builders are."""
+    counts = {}
+    data = net.fetch_json(base + "/wp-json/wp/v2/comments?per_page=100&_fields=link")
+    links = [c.get("link", "") for c in data] if isinstance(data, list) else []
+    if not links:
+        page = net.fetch(base + "/comments/feed/")
+        if page.ok and "<item" in page.html:
+            links = [l.get_text(strip=True) for l in BeautifulSoup(page.html, "xml").select("item > link")]
+    for l in links:
+        post = re.sub(r"/comment-page-\d+/?$", "", l.split("#")[0].split("?")[0]).rstrip("/") + "/"
+        if post.startswith("http"):
+            counts[post] = counts.get(post, 0) + 1
+    return [(n, u) for u, n in counts.items()]
+
+
 def posts_for_homepage(url, limit=None):
-    """For a bare domain, use its RSS feed to pick the posts with the most comments.
-    WordPress feeds carry <slash:comments>, Blogger feeds carry <thr:total>."""
+    """For a bare domain, find the posts with the most comments: first from the site's
+    recent comments, then from the post feed (WordPress <slash:comments>, Blogger <thr:total>)."""
     limit = limit or config.POSTS_PER_HOMEPAGE
     base = url.rstrip("/")
-    candidates = []
-    for feed in (base + "/feed/", base + "/feeds/posts/default?alt=rss&max-results=50", base + "/rss.xml"):
+    candidates = _most_commented_from_comments(base)
+    feeds = () if candidates else (base + "/feed/", base + "/feeds/posts/default?alt=rss&max-results=50",
+                                   base + "/rss.xml")
+    for feed in feeds:
         page = net.fetch(feed)
         if not page.ok or "<item" not in page.html:
             continue

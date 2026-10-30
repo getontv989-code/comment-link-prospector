@@ -125,7 +125,7 @@ def test_pipeline_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(net, "render", lambda *a, **k: None)
     monkeypatch.setattr(search, "find_listicles", lambda: [("https://some-seo-list.in/list/", "seed")])
     monkeypatch.setattr(search, "search", lambda *a, **k: [])
-    monkeypatch.setattr(scoring, "tranco", lambda: {"spammer-one.com": 5000})
+    monkeypatch.setattr(scoring, "tranco", lambda: {"spammer-one.com": 50000, "facebook-like-giant.com": 50})
     monkeypatch.setattr(config, "OUT_DIR", tmp_path / "out")
     monkeypatch.setattr(config, "STATE_DIR", tmp_path / "state")
     monkeypatch.setattr(config, "INPUTS_DIR", tmp_path / "inputs")
@@ -177,3 +177,21 @@ def test_browser_can_be_used_from_worker_threads(server):
     with ThreadPoolExecutor(4) as ex:
         results = list(ex.map(net.render, [server + "/lazy.html"] * 2))
     assert all(r and r.rendered for r in results)
+
+
+def test_search_relevance_rejects_wrong_query_results():
+    from prospector import search
+    good = [("https://x.in/blog-commenting-sites", "100 Dofollow Blog Commenting Sites List 2025"),
+            ("https://y.com/a", "High DA blog commenting sites")]
+    bad = [("https://support.microsoft.com/x", "Fix Bluetooth audio devices"),
+           ("https://www.merriam-webster.com/dictionary/high", "High Definition & Meaning")]
+    assert search.relevant("dofollow blog commenting list 2025", good)
+    assert not search.relevant("dofollow blog commenting list 2025", bad)
+
+
+def test_most_commented_posts_from_recent_comments(monkeypatch):
+    data = [{"link": "https://b.com/post-a/#comment-1"}, {"link": "https://b.com/post-b/comment-page-2/#comment-9"},
+            {"link": "https://b.com/post-b/#comment-3"}, {"link": "https://b.com/post-b/#comment-4"}]
+    monkeypatch.setattr(net, "fetch_json", lambda url, **k: data if "/wp-json/wp/v2/comments" in url else None)
+    monkeypatch.setattr(net, "fetch", lambda url, **k: net.Page(url, 404, ""))
+    assert listicles.posts_for_homepage("https://b.com/", limit=1) == ["https://b.com/post-b/"]
