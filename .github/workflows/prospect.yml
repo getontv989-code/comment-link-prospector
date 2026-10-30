@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: prospector
@@ -76,6 +77,25 @@ jobs:
           git diff --cached --quiet || git commit -m "Prospects $stamp"
           git pull --rebase --autostash || true
           git push || true
+
+      - name: Ask for Semrush data when it is missing
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Semrush data needed (seoshope export or API credits)"
+          num=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number')
+          if [ -f out/semrush_request.md ]; then
+            if [ -n "$num" ]; then gh issue comment "$num" --body-file out/semrush_request.md
+            else gh issue create --title "$title" --body-file out/semrush_request.md --assignee "${{ github.repository_owner }}"; fi
+          elif [ -n "$num" ]; then
+            gh issue close "$num" --comment "Semrush data is covered now. Closing."
+          fi
+
+      - name: Run summary
+        if: always()
+        run: |
+          [ -f out/summary.json ] && { echo '```json'; cat out/summary.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
 
       - uses: actions/upload-artifact@v4
         if: always()

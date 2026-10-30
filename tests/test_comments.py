@@ -151,3 +151,7 @@ def test_pipeline_end_to_end(tmp_path, monkeypatch):
     assert "facebook.com" not in {d["domain"] for d in doms}
     assert summary["semrush_units_used"] == 0
     assert (tmp_path / "out" / "semrush_queue.csv").exists()
+    # spammer-one.com came from the export, the other two need seoshope or the API
+    assert "spammer-one.com" not in summary["semrush_data_missing_for"]
+    assert "spammer-two.co.uk" in summary["semrush_data_missing_for"]
+    assert "seoshope" in (tmp_path / "out" / "semrush_request.md").read_text()

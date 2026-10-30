@@ -129,9 +129,14 @@ def run():
     semrush.write_queue(top, config.OUT_DIR / "semrush_queue.csv")
 
     # stage 6
-    units = 0
+    units, missing = 0, []
     if top:
-        found, units = semrush.collect_candidates(top)
+        found, units, missing = semrush.collect_candidates(top)
+        req = config.OUT_DIR / "semrush_request.md"
+        if missing:
+            semrush.write_request(missing, top, req)
+        elif req.exists():
+            req.unlink()
         cand = []
         for d, rows in found.items():
             for c in semrush.filter_candidates(rows):
@@ -173,6 +178,7 @@ def run():
         "edu_gov": sum(1 for p in prospects if p["edu_gov"]),
         "commenter_domains": len(scored), "semrush_domains": [r["domain"] for r in top],
         "semrush_mode": config.SEMRUSH_MODE, "semrush_units_used": units,
+        "semrush_data_missing_for": missing,
     }
     (config.OUT_DIR / "summary.json").write_text(json.dumps(summary, indent=2))
     log.info("done: %s", summary)

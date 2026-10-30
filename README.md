@@ -51,15 +51,21 @@ is in `semrush_page_ascore`.
 
 `state/seen_pages.json` remembers what has been checked, so each day's list is new pages.
 
-## Semrush without spending credits
+## Semrush: two options, credits last
 
-- Default (`SEMRUSH_MODE=off`): no API calls. Open the links in `results/semrush_queue.csv` in
-  any logged-in Semrush (the shared seoshope.com session works), export Backlinks as CSV, and
-  commit the file into `inputs/semrush/`. That starts a run which verifies those backlinks.
-- API (`SEMRUSH_MODE=api`): set repo variables `SEMRUSH_MODE=api` and `SEMRUSH_UNIT_BUDGET`
-  (for example `6000`) plus the `SEMRUSH_API_KEY` secret. One backlink row costs 40 units, so
-  the budget caps it at `budget / 40` rows per run, top domains only. Without a budget it
-  refuses to call the API.
+Only the top `TOP_DOMAINS` (default 5) commenter domains ever go to Semrush.
+
+1. **Shared Semrush (seoshope.com), 0 credits.** Export each domain's Backlinks report as CSV from the
+   links in `results/semrush_queue.csv` and upload the files to `inputs/semrush/`. Uploading starts a
+   run that verifies those backlinks.
+2. **Semrush API credits.** Set the secret `SEMRUSH_API_KEY` and the repo variables `SEMRUSH_MODE=api`
+   and `SEMRUSH_UNIT_BUDGET` (for example `6000`). One backlink row costs 40 units, so the budget caps a
+   run at `budget / 40` rows. The API is only called for domains option 1 did not cover, and never
+   without a budget.
+
+When neither option covered a top domain, the run uses a free footprint search for it and opens a
+GitHub issue, "Semrush data needed", listing the domains with both options. GitHub notifies the repo
+owner. The issue closes itself once a run has the data.
 
 ## Settings (repo variables or secrets, all optional)
 

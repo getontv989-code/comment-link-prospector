@@ -2,11 +2,13 @@
 blog-comment backlinks, flag .edu/.gov, and verify each one live.
 
 Backlink sources, cheapest first:
-  1. Manual Semrush exports dropped into inputs/semrush/*.csv (e.g. from the shared
-     seoshope.com session). Costs no API units.
-  2. Free footprint search: '"domain.com" "leave a reply"' style queries.
-  3. Semrush API, only when SEMRUSH_MODE=api AND SEMRUSH_UNIT_BUDGET is set. The job
-     stops before it would exceed the budget.
+  1. Semrush exports from the shared seoshope.com session, uploaded to inputs/semrush/*.csv.
+     Costs no API units.
+  2. Semrush API, only when SEMRUSH_MODE=api AND SEMRUSH_UNIT_BUDGET is set, and only for
+     domains option 1 did not cover. The job stops before it would exceed the budget.
+  3. Free footprint search ('"domain.com" "leave a reply"') for anything still uncovered.
+     Those domains are also written to semrush_request.md, which the workflow posts as a
+     GitHub issue asking for option 1 or 2.
 Every candidate is then fetched and checked with the same comment checker as stage 3,
 so a row only survives if comments are open and the domain's link is really there."""
 import csv
@@ -121,23 +123,55 @@ def collect_candidates(top):
             found[d].append(row)
         elif len(names) == 1:
             found[next(iter(names))].append(row)
+    have_export = {d for d in names if found[d]}
 
-    for d in names:
-        if not found[d]:
-            found[d] += footprint_search(d)
-
+    # Option 2: the Semrush API, only for domains the seoshope exports did not cover.
     if config.SEMRUSH_MODE == "api":
         if not config.SEMRUSH_API_KEY or config.SEMRUSH_UNIT_BUDGET <= 0:
             log.warning("SEMRUSH_MODE=api but no SEMRUSH_API_KEY / SEMRUSH_UNIT_BUDGET; skipping API")
         else:
-            for d in sorted(names):
+            for d in sorted(names - have_export):
                 left = config.SEMRUSH_UNIT_BUDGET - units_used
                 rows, cost = api_backlinks(d, left)
                 units_used += cost
                 found[d] += rows
                 log.info("Semrush API %s: %d rows, %d units (total %d/%d)", d, len(rows), cost,
                          units_used, config.SEMRUSH_UNIT_BUDGET)
-    return found, units_used
+
+    missing = sorted(d for d in names if not found[d])
+    for d in names:
+        if not found[d]:
+            found[d] += footprint_search(d)
+    return found, units_used, missing
+
+
+def write_request(missing, top, path):
+    """Asks the user for Semrush data: an export from the shared seoshope session, or an
+    OK to use API credits. The workflow posts this as a GitHub issue."""
+    by = {r["domain"]: r for r in top}
+    lines = [
+        "The prospector found these comment-link builders but has no Semrush backlink data for them yet. "
+        "This run used free footprint search instead.",
+        "",
+        "| Domain | Comment pages seen | Semrush backlinks |",
+        "| --- | --- | --- |",
+    ]
+    for d in missing:
+        lines.append(f"| {d} | {by[d]['pages_seen']} | [open]({ui_link(d)}) |")
+    lines += [
+        "",
+        "Pick either option. The next run picks it up automatically.",
+        "",
+        "1. **Shared Semrush (seoshope.com), 0 credits.** Log in, open each link above "
+        "(swap the host for the seoshope server if needed), export Backlinks as CSV, and upload the files to "
+        "`inputs/semrush/` in this repo (Add file > Upload files). Uploading starts a run. "
+        "If none of the seoshope servers work, get a replacement login or use option 2.",
+        "2. **Semrush API credits.** In Settings > Secrets and variables > Actions, add the secret "
+        "`SEMRUSH_API_KEY` and the variables `SEMRUSH_MODE` = `api` and `SEMRUSH_UNIT_BUDGET` "
+        f"(each backlink row costs {UNITS_PER_BACKLINK_ROW} units; `6000` covers about "
+        f"{6000 // UNITS_PER_BACKLINK_ROW} rows a run). The API is only used for domains without an export.",
+    ]
+    path.write_text("\n".join(lines) + "\n")
 
 
 def filter_candidates(rows):
