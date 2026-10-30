@@ -223,3 +223,18 @@ def test_fetch_gives_up_on_endless_stream(monkeypatch):
     srv.shutdown()
     assert page.status == 200 and page.html
     assert time.time() - t0 < 10
+
+
+def test_blogger_comment_feed_gives_commenters(monkeypatch):
+    html = ('<html><head><link rel="alternate" href="https://list.blogspot.com/feeds/123/comments/default">'
+            '</head><body><div id="comment-editor"></div></body></html>')
+    feed = {"feed": {"entry": [
+        {"author": [{"name": {"$t": "best dentist in pune"}, "uri": {"$t": "https://spam-dental.in/"}}]},
+        {"author": [{"name": {"$t": "Jo"}, "uri": {"$t": "https://www.blogger.com/profile/1"}}]},
+    ]}}
+    monkeypatch.setattr(net, "fetch", lambda url, **k: net.Page(url, 200, html))
+    monkeypatch.setattr(net, "fetch_json", lambda url, **k: feed if "/feeds/123/comments" in url else None)
+    monkeypatch.setattr(net, "render", lambda *a, **k: None)
+    r = comments.check_page("https://list.blogspot.com/2025/10/list.html")
+    assert [l["domain"] for l in r["links"]] == ["spam-dental.in"]
+    assert r["comment_count"] == 2 and r["dofollow"] is None

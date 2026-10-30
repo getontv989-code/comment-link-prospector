@@ -159,6 +159,34 @@ def _wp_comment_status(url, info):
     return None
 
 
+BLOGGER_FEED_RE = re.compile(r"/feeds/(\d+)/comments/default")
+
+
+def _blogger_feed_links(page):
+    """Blogger loads comments in a frame the crawler can't always read, but every post has a
+    public comment feed that names each commenter's website. Rel can't be seen from the
+    feed, so these links count toward finding link builders but never as dofollow."""
+    m = BLOGGER_FEED_RE.search(page.html)
+    if not m:
+        return [], 0
+    parts = urlsplit(page.final_url)
+    data = net.fetch_json(f"{parts.scheme}://{parts.netloc}/feeds/{m.group(1)}/comments/default"
+                          "?alt=json&max-results=500")
+    entries = ((data or {}).get("feed") or {}).get("entry") or []
+    own, links, seen = domains.root_domain(page.final_url), [], set()
+    for e in entries:
+        for au in e.get("author") or []:
+            href = (au.get("uri") or {}).get("$t", "")
+            d = domains.root_domain(href) if href.startswith("http") else ""
+            if not d or d == own or d in ("blogger.com", "google.com") or href in seen:
+                continue
+            seen.add(href)
+            links.append({"url": href, "domain": d, "kind": "author",
+                          "anchor": ((au.get("name") or {}).get("$t") or "")[:120],
+                          "rel": "unknown (comment feed)", "dofollow": False})
+    return links, len(entries)
+
+
 def check_page(url):
     """Full check of one candidate comment page. Never posts anything."""
     page = net.fetch(url)
@@ -194,6 +222,11 @@ def check_page(url):
                     info["platform"] = info["platform"] or r["platform"]
             info["rendered"] = True
 
+    if not any(l["kind"] == "author" for l in info["links"]) and BLOGGER_FEED_RE.search(page.html):
+        feed_links, n = _blogger_feed_links(page)
+        info["links"] += feed_links
+        info["comment_count"] = max(info["comment_count"], n)
+
     # Old comment pages (comment-page-N) hold most of the commenters on long threads.
     visited = {page.final_url}
     queue = [u for u in info["pagination"] if u not in visited]
@@ -212,7 +245,8 @@ def check_page(url):
     info["links"] = info["links"][: config.MAX_COMMENTS * 2]
     author = [l for l in info["links"] if l["kind"] == "author"]
     pool = author or info["links"]
-    info["dofollow"] = (any(l["dofollow"] for l in pool) if pool else None)
+    known = [l for l in pool if not l["rel"].startswith("unknown")]
+    info["dofollow"] = (any(l["dofollow"] for l in known) if known else None)
     info["dofollow_links"] = sum(1 for l in pool if l["dofollow"])
     info["url"] = url
     info["final_url"] = page.final_url
