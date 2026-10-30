@@ -229,7 +229,9 @@ def check_page(url):
                     info["platform"] = info["platform"] or r["platform"]
             info["rendered"] = True
 
-    if not any(l["kind"] == "author" for l in info["links"]) and BLOGGER_FEED_RE.search(page.html):
+    # Blogger author links usually point at blogger.com profiles; the spam sits in the comment text.
+    real_author = any(l["kind"] == "author" and "blogger.com/profile" not in l["url"] for l in info["links"])
+    if not real_author and BLOGGER_FEED_RE.search(page.html):
         feed_links, n = _blogger_feed_links(page)
         info["links"] += feed_links
         info["comment_count"] = max(info["comment_count"], n)
