@@ -49,6 +49,7 @@ jobs:
           python -m pytest -q tests
 
       - name: Run prospector
+        timeout-minutes: 110  # the crawl itself stops at CRAWL_MINUTES; this is a backstop
         env:
           MAX_TARGETS: ${{ inputs.max_targets || vars.MAX_TARGETS || '400' }}
           RECRAWL: ${{ inputs.recrawl || 'false' }}
