@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 
 from . import comments, config, pipeline
 
@@ -19,6 +20,9 @@ def main():
             print(json.dumps(r, indent=2, default=list))
         return
     pipeline.run()
+    # Stuck worker threads would otherwise keep the process alive after the results are written.
+    logging.shutdown()
+    os._exit(0)
 
 
 if __name__ == "__main__":

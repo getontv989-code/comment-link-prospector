@@ -77,7 +77,7 @@ jobs:
           fi
           git add results state/seen_pages.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "Prospects $stamp"
-          git pull --rebase --autostash || true
+          git pull --rebase --autostash -X theirs || true  # this run's results win
           git push || true
 
       - name: Ask for Semrush data when it is missing

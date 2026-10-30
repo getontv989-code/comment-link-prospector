@@ -14,7 +14,7 @@ import math
 import re
 import time
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from . import config, net
 
@@ -78,6 +78,9 @@ def authority(domain, opr=None):
     return max(0, min(100, round(100 - 10 * math.log10(rank))))  # #1 -> 100, #1M -> 40
 
 
+LIVE_SECONDS = 180
+
+
 def is_live(domain):
     for scheme in ("https://", "http://"):
         page = net.fetch(scheme + domain, timeout=12)
@@ -109,8 +112,14 @@ def score_domains(stats):
     names = list(stats)
     log.info("stage 5: scoring %d commenter domains", len(names))
     opr = open_pagerank(names)
-    with ThreadPoolExecutor(config.WORKERS) as ex:
-        live = dict(zip(names, ex.map(is_live, names)))
+    # A stuck homepage must not hold the run, so liveness gets a fixed time box.
+    # Domains still unanswered when it ends count as live.
+    ex = ThreadPoolExecutor(config.WORKERS)
+    futs = {ex.submit(is_live, d): d for d in names}
+    done, _ = wait(futs, timeout=LIVE_SECONDS)
+    live = {d: (f.result() if f in done and f.exception() is None else True) for f, d in futs.items()}
+    ex.shutdown(wait=False, cancel_futures=True)
+    log.info("stage 5: liveness done for %d/%d domains", len(done), len(names))
     rows = []
     for d in names:
         s = stats[d]
