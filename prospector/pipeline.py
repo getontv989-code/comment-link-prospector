@@ -140,7 +140,7 @@ def run():
             "semrush_page_ascore": "", "listicle": targets[r["url"]], "checked_at": _now(),
         }
         checked.append(row)
-        if r["comments_open"]:
+        if r["comments_open"] and r["dofollow"]:  # already spammed with dofollow links
             prospects.append(row)
         # stage 4: commenter domains (closed pages still tell us who the comment builders are)
         for l in r["links"]:
@@ -200,7 +200,7 @@ def run():
                 "semrush_page_ascore": c["page_ascore"] or "", "listicle": "", "checked_at": _now(),
             }
             checked.append(row)
-            if r["comments_open"] and (linked or c["origin"] != "footprint search"):
+            if r["comments_open"] and r["dofollow"] and (linked or c["origin"] != "footprint search"):
                 prospects.append(row)
     net.close_browser()
 
