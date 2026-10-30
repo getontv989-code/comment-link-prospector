@@ -155,3 +155,25 @@ def test_pipeline_end_to_end(tmp_path, monkeypatch):
     assert "spammer-one.com" not in summary["semrush_data_missing_for"]
     assert "spammer-two.co.uk" in summary["semrush_data_missing_for"]
     assert "seoshope" in (tmp_path / "out" / "semrush_request.md").read_text()
+
+
+def test_off_topic_search_results_are_skipped():
+    assert listicles.looks_like_comment_list("https://x.in/list/", (FIX / "listicle.html").read_text())
+    assert not listicles.looks_like_comment_list(
+        "https://www.merriam-webster.com/dictionary/high", "<html><body>high: adjective, tall</body></html>")
+
+
+def test_blogspot_blogs_are_separate_sites():
+    from prospector import domains
+    html = '<article><div class="post-body">' + "blog commenting dofollow list " * 40 + \
+           '<a href="https://other-blog.blogspot.com/2024/01/post.html">x</a></div></article>'
+    assert listicles.extract_targets("https://list-site.blogspot.com/2025/10/list.html", html) == \
+        ["https://other-blog.blogspot.com/2024/01/post.html"]
+    assert domains.root_domain("https://a.blogspot.com/") != domains.root_domain("https://b.blogspot.com/")
+
+
+def test_browser_can_be_used_from_worker_threads(server):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(4) as ex:
+        results = list(ex.map(net.render, [server + "/lazy.html"] * 2))
+    assert all(r and r.rendered for r in results)

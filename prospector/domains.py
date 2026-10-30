@@ -5,7 +5,9 @@ import tldextract
 
 from . import config
 
-_extract = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)  # bundled PSL, no network
+# Bundled PSL, no network. Private suffixes (blogspot.com, wordpress.com, ...) are included so
+# each hosted blog counts as its own site instead of collapsing into one platform domain.
+_extract = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
 
 # Social networks, big platforms, link shorteners and CDNs. Spammers link these but
 # they tell us nothing about who is building comment links.

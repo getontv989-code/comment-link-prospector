@@ -57,10 +57,15 @@ def gather_targets(seen):
         page = net.fetch(url)
         if not page.ok:
             return url, []
+        if origin != "seeds.txt" and not listicles.looks_like_comment_list(page.final_url, page.html):
+            log.info("  skipping off-topic search result %s", url)
+            return url, None
         return url, listicles.extract_targets(page.final_url, page.html)
 
     with ThreadPoolExecutor(config.WORKERS) as ex:
         for listicle, found in ex.map(one, lists):
+            if found is None:
+                continue
             log.info("  %s -> %d links", listicle, len(found))
             for u in found:
                 targets.setdefault(u, listicle)

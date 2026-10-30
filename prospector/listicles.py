@@ -24,6 +24,18 @@ def _content_root(soup):
     return soup.body or soup
 
 
+LIST_TOPIC_RE = re.compile(r"comment", re.I)
+LIST_SEO_RE = re.compile(r"do-?follow|backlinks?|high\s*(da|pr)|\.edu|\.gov|seo", re.I)
+
+
+def looks_like_comment_list(url, html):
+    """Search engines (Bing especially) sometimes return unrelated pages; only keep pages
+    that are actually about blog commenting for SEO."""
+    text = BeautifulSoup(html, "lxml").get_text(" ")[:200000]
+    head = url + " " + text[:3000]
+    return bool(LIST_TOPIC_RE.search(head) and LIST_SEO_RE.search(text))
+
+
 def extract_targets(listicle_url, html):
     """Every external URL in the list body, as written (plain-text URLs included)."""
     soup = BeautifulSoup(html, "lxml")

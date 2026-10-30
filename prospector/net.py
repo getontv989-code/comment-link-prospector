@@ -2,6 +2,7 @@
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -17,7 +18,7 @@ def session():
     s = getattr(_local, "session", None)
     if s is None:
         s = requests.Session()
-        retry = Retry(total=2, backoff_factor=1.5, status_forcelist=(429, 500, 502, 503, 504),
+        retry = Retry(total=2, connect=0, read=0, backoff_factor=1.5, status_forcelist=(429, 500, 502, 503, 504),
                       allowed_methods=("GET", "HEAD"))
         s.mount("http://", HTTPAdapter(max_retries=retry))
         s.mount("https://", HTTPAdapter(max_retries=retry))
@@ -46,7 +47,7 @@ class Page:
 
 def fetch(url, timeout=None, **kw):
     try:
-        r = session().get(url, timeout=timeout or config.TIMEOUT, allow_redirects=True, **kw)
+        r = session().get(url, timeout=(8, timeout or config.TIMEOUT), allow_redirects=True, **kw)
         ctype = r.headers.get("content-type", "")
         text = r.text if ("html" in ctype or "xml" in ctype or "json" in ctype or not ctype) else ""
         return Page(url, r.status_code, text, dict(r.headers), r.url)
@@ -69,7 +70,7 @@ def fetch_json(url, timeout=None, **kw):
 # Playwright is only started if a page actually needs it, and is used from one
 # thread at a time (sync API objects are not thread-safe).
 
-_browser_lock = threading.Lock()
+_browser_thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
 _pw = None
 _browser = None
 
@@ -107,56 +108,73 @@ def _get_browser():
 
 
 def render(url, max_scrolls=60, max_clicks=15):
+    """Playwright's sync API only works on the thread that started it, so every browser
+    call runs on one dedicated thread and crawler threads wait for their turn."""
+    if not config.USE_BROWSER:
+        return None
+    try:
+        return _browser_thread.submit(_render, url, max_scrolls, max_clicks).result()
+    except Exception as e:
+        log.debug("render failed %s: %s", url, e)
+        return None
+
+
+def _render(url, max_scrolls, max_clicks):
     """Open the page in headless Chromium, scroll to the very bottom until the page
     stops growing, click any 'load more comments' / 'leave a comment' style buttons,
     and return the rendered HTML (including same-origin iframes such as comment forms)."""
-    if not config.USE_BROWSER:
+    try:
+        browser = _get_browser()
+    except Exception as e:  # Playwright not installed
+        log.warning("headless browser unavailable: %s", e)
         return None
-    with _browser_lock:
-        try:
-            browser = _get_browser()
-        except Exception as e:  # Playwright not installed
-            log.warning("headless browser unavailable: %s", e)
-            return None
-        ctx = browser.new_context(user_agent=config.USER_AGENT, viewport={"width": 1366, "height": 900})
-        page = ctx.new_page()
-        page.route("**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,mp4,webm}", lambda r: r.abort())
-        try:
-            resp = page.goto(url, wait_until="domcontentloaded", timeout=config.TIMEOUT * 2000)
-            status = resp.status if resp else None
-            last_h, stable, clicks = 0, 0, 0
-            for _ in range(max_scrolls):
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(700)
-                if clicks < max_clicks and page.evaluate(_CLICK_JS):
-                    clicks += 1
-                    page.wait_for_timeout(1200)
-                    stable = 0
-                    continue
-                h = page.evaluate("document.body.scrollHeight")
-                stable = stable + 1 if h == last_h else 0
-                last_h = h
-                if stable >= 3:
-                    break
-            html = page.content()
-            frames = []
-            for fr in page.frames[1:]:
-                try:
-                    if any(k in (fr.url or "") for k in ("comment", "disqus", "blogger.com")):
-                        frames.append(f'<div data-iframe-src="{fr.url}">{fr.content()}</div>')
-                except Exception:
-                    pass
-            if frames:
-                html = html.replace("</body>", "".join(frames) + "</body>")
-            return Page(url, status, html, {}, page.url, rendered=True)
-        except Exception as e:
-            log.debug("render failed %s: %s", url, e)
-            return None
-        finally:
-            ctx.close()
+    ctx = browser.new_context(user_agent=config.USER_AGENT, viewport={"width": 1366, "height": 900})
+    page = ctx.new_page()
+    page.route("**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,mp4,webm}", lambda r: r.abort())
+    try:
+        resp = page.goto(url, wait_until="domcontentloaded", timeout=config.TIMEOUT * 2000)
+        status = resp.status if resp else None
+        last_h, stable, clicks = 0, 0, 0
+        deadline = time.time() + 60
+        for _ in range(max_scrolls):
+            if time.time() > deadline:
+                break
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(700)
+            if clicks < max_clicks and page.evaluate(_CLICK_JS):
+                clicks += 1
+                page.wait_for_timeout(1200)
+                stable = 0
+                continue
+            h = page.evaluate("document.body.scrollHeight")
+            stable = stable + 1 if h == last_h else 0
+            last_h = h
+            if stable >= 3:
+                break
+        html = page.content()
+        frames = []
+        for fr in page.frames[1:]:
+            try:
+                if any(k in (fr.url or "") for k in ("comment", "disqus", "blogger.com")):
+                    frames.append(f'<div data-iframe-src="{fr.url}">{fr.content()}</div>')
+            except Exception:
+                pass
+        if frames:
+            html = html.replace("</body>", "".join(frames) + "</body>")
+        return Page(url, status, html, {}, page.url, rendered=True)
+    except Exception as e:
+        log.debug("render failed %s: %s", url, e)
+        return None
+    finally:
+        ctx.close()
 
 
 def close_browser():
+    if _browser is not None:
+        _browser_thread.submit(_close).result()
+
+
+def _close():
     global _pw, _browser
     if _browser is not None:
         try:
