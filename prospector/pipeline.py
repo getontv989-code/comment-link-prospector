@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 PROSPECT_COLUMNS = [
     "page_url", "high_value", "comments_open", "dofollow", "authority", "edu_gov", "source_domain", "found_via",
     "dofollow_commenter_links", "comments_seen", "has_website_field", "platform", "open_evidence",
-    "semrush_page_ascore", "listicle", "checked_at",
+    "semrush_page_ascore", "listicle", "sample_commenter_link", "checked_at",
 ]
 
 
@@ -91,6 +91,12 @@ def gather_targets(seen):
     return picked
 
 
+def _sample_link(r):
+    """One commenter link and its rel, so a person can verify the dofollow call by eye."""
+    links = sorted(r["links"], key=lambda l: (not l["dofollow"], l["kind"] != "author"))
+    return f'{links[0]["url"]} (rel="{links[0]["rel"]}")' if links else ""
+
+
 def check_all(urls):
     """Check pages in parallel, logging progress. Pages not started within
     CRAWL_MINUTES are skipped so a run always finishes and saves what it found."""
@@ -137,7 +143,8 @@ def run():
             "found_via": "blog commenting list", "dofollow_commenter_links": r.get("dofollow_links", 0),
             "comments_seen": r["comment_count"], "has_website_field": _yn(r["has_website_field"]),
             "platform": r["platform"], "open_evidence": r["open_evidence"] or r.get("error", ""),
-            "semrush_page_ascore": "", "listicle": targets[r["url"]], "checked_at": _now(),
+            "semrush_page_ascore": "", "listicle": targets[r["url"]],
+            "sample_commenter_link": _sample_link(r), "checked_at": _now(),
         }
         checked.append(row)
         if r["comments_open"] and r["dofollow"]:  # already spammed with dofollow links
