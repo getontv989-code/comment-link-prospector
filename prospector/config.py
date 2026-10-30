@@ -46,7 +46,8 @@ CRAWL_MINUTES = _int("CRAWL_MINUTES", 35)               # whole run stops starti
 RECRAWL = _bool("RECRAWL", False)                     # ignore state/seen_pages.json
 
 # Pre-scoring and Semrush
-TOP_DOMAINS = _int("TOP_DOMAINS", 5)                  # how many domains go to Semrush
+TOP_DOMAINS = _int("TOP_DOMAINS", 5)
+FOOTPRINT = _bool("FOOTPRINT", False)                  # free search fallback when Semrush has no data (slow)                  # how many domains go to Semrush
 OPENPAGERANK_API_KEY = os.environ.get("OPENPAGERANK_API_KEY", "")
 USE_TRANCO = _bool("USE_TRANCO", True)
 

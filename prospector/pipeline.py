@@ -34,6 +34,9 @@ def _save_state(seen):
     config.STATE_DIR.mkdir(parents=True, exist_ok=True)
     (config.STATE_DIR / "seen_pages.json").write_text(json.dumps(sorted(seen), indent=0))
 
+DOMAIN_COLUMNS = ["domain", "score", "pages_seen", "on_seo_list_pages", "keyword_anchor_pages", "dofollow_pages",
+                  "authority", "tranco_rank", "open_pagerank", "live", "example_pages"]
+
 
 def _write(path, rows, columns):
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -176,12 +179,17 @@ def run():
                 stats[d]["keyword_anchor_pages"].add(row["page_url"])
         seen.add(r["url"])
 
+    # Save the crawl now, so a later stage that stalls can't cost us these results.
+    _write(config.OUT_DIR / "prospects.csv", prospects, PROSPECT_COLUMNS)
+    _write(config.OUT_DIR / "all_checked_pages.csv", checked, PROSPECT_COLUMNS)
+
     # stage 5
     scored = scoring.score_domains(stats) if stats else []
     top = [r for r in scored if r["live"]][: config.TOP_DOMAINS]
     log.info("stage 5: %d commenter domains, top %d: %s", len(scored), len(top),
              ", ".join(r["domain"] for r in top))
     semrush.write_queue(top, config.OUT_DIR / "semrush_queue.csv")
+    _write(config.OUT_DIR / "commenter_domains.csv", scored, DOMAIN_COLUMNS)
 
     # stage 6
     units, missing = 0, []
@@ -228,10 +236,7 @@ def run():
                                   -int(r["authority"] or 0)))
     _write(config.OUT_DIR / "prospects.csv", prospects, PROSPECT_COLUMNS)
     _write(config.OUT_DIR / "all_checked_pages.csv", checked, PROSPECT_COLUMNS)
-    _write(config.OUT_DIR / "commenter_domains.csv", scored,
-           ["domain", "score", "pages_seen", "on_seo_list_pages", "keyword_anchor_pages", "dofollow_pages",
-            "authority", "tranco_rank",
-            "open_pagerank", "live", "example_pages"])
+    _write(config.OUT_DIR / "commenter_domains.csv", scored, DOMAIN_COLUMNS)
     _save_state(seen)
 
     summary = {

@@ -139,7 +139,7 @@ def collect_candidates(top):
                          units_used, config.SEMRUSH_UNIT_BUDGET)
 
     missing = sorted(d for d in names if not found[d])
-    for d in names:
+    for d in names if config.FOOTPRINT else []:
         if not found[d]:
             found[d] += footprint_search(d)
     return found, units_used, missing
