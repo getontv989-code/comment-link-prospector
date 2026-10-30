@@ -70,9 +70,10 @@ def fetch_json(url, timeout=None, **kw):
 # Playwright is only started if a page actually needs it, and is used from one
 # thread at a time (sync API objects are not thread-safe).
 
-_browser_thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
-_pw = None
-_browser = None
+# Each browser thread owns its own Chromium; crawler threads queue for a free one.
+_browser_thread = ThreadPoolExecutor(max_workers=config.BROWSERS, thread_name_prefix="browser")
+_browser_local = threading.local()
+_started = []
 
 # Clicks in-page buttons that reveal comments or the comment form. Links that would
 # navigate away are skipped, so the crawler never leaves the page or submits anything.
@@ -99,12 +100,12 @@ _CLICK_JS = r"""
 
 
 def _get_browser():
-    global _pw, _browser
-    if _browser is None:
+    if getattr(_browser_local, "browser", None) is None:
         from playwright.sync_api import sync_playwright
-        _pw = sync_playwright().start()
-        _browser = _pw.chromium.launch(args=["--no-sandbox"])
-    return _browser
+        _browser_local.pw = sync_playwright().start()
+        _browser_local.browser = _browser_local.pw.chromium.launch(args=["--no-sandbox"])
+        _started.append(1)
+    return _browser_local.browser
 
 
 def render(url, max_scrolls=60, max_clicks=15):
@@ -170,21 +171,9 @@ def _render(url, max_scrolls, max_clicks):
 
 
 def close_browser():
-    if _browser is not None:
-        _browser_thread.submit(_close).result()
-
-
-def _close():
-    global _pw, _browser
-    if _browser is not None:
-        try:
-            _browser.close()
-            _pw.stop()
-        except Exception:
-            pass
-        _browser = None
-        _pw = None
-
-
-def polite_sleep(seconds=0.5):
-    time.sleep(seconds)
+    """Stop every browser thread's Chromium (each must be closed on its own thread)."""
+    global _browser_thread
+    if _started:
+        _browser_thread.shutdown(wait=True)
+        _browser_thread = ThreadPoolExecutor(max_workers=config.BROWSERS, thread_name_prefix="browser")
+        _started.clear()
