@@ -1,26 +1,26 @@
 {
-  "finished_at": "2026-10-30 17:10",
-  "minutes": 9.0,
-  "pages_checked": 291,
-  "prospects": 2,
-  "prospects_dofollow": 2,
+  "finished_at": "2026-10-30 18:31",
+  "minutes": 5.2,
+  "pages_checked": 60,
+  "prospects": 7,
+  "prospects_dofollow": 0,
   "edu_gov": 0,
   "high_value": 0,
-  "commenter_domains": 837,
+  "commenter_domains": 27,
   "semrush_domains": [
-    "smalltownwoman.com",
+    "astrotalk.com",
+    "adnabu.com",
     "bloggingfromparadise.com",
-    "jerseygirlcooks.com",
-    "thelittlekitchen.net",
-    "laurenslatest.com"
+    "infizestpublishings.com",
+    "brownsofts.com"
   ],
   "semrush_mode": "off",
   "semrush_units_used": 0,
   "semrush_data_missing_for": [
+    "adnabu.com",
+    "astrotalk.com",
     "bloggingfromparadise.com",
-    "jerseygirlcooks.com",
-    "laurenslatest.com",
-    "smalltownwoman.com",
-    "thelittlekitchen.net"
+    "brownsofts.com",
+    "infizestpublishings.com"
   ]
 }
