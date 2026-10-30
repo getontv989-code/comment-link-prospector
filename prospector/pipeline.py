@@ -13,7 +13,7 @@ from . import comments, config, domains, listicles, net, scoring, search, semrus
 log = logging.getLogger(__name__)
 
 PROSPECT_COLUMNS = [
-    "page_url", "comments_open", "dofollow", "authority", "edu_gov", "source_domain", "found_via",
+    "page_url", "high_value", "comments_open", "dofollow", "authority", "edu_gov", "source_domain", "found_via",
     "dofollow_commenter_links", "comments_seen", "has_website_field", "platform", "open_evidence",
     "semrush_page_ascore", "listicle", "checked_at",
 ]
@@ -173,7 +173,12 @@ def run():
     net.close_browser()
 
     # outputs
-    prospects.sort(key=lambda r: (r["edu_gov"] == "", r["dofollow"] != "yes", -int(r["authority"] or 0)))
+    # What Mash counts as worth building: dofollow on a .edu/.gov page, or on a DA 60+ site.
+    for r in checked:
+        r["high_value"] = "yes" if r["dofollow"] == "yes" and (
+            r["edu_gov"] or int(r["authority"] or 0) >= config.HIGH_VALUE_AUTHORITY) else ""
+    prospects.sort(key=lambda r: (r["high_value"] != "yes", r["edu_gov"] == "", r["dofollow"] != "yes",
+                                  -int(r["authority"] or 0)))
     _write(config.OUT_DIR / "prospects.csv", prospects, PROSPECT_COLUMNS)
     _write(config.OUT_DIR / "all_checked_pages.csv", checked, PROSPECT_COLUMNS)
     _write(config.OUT_DIR / "commenter_domains.csv", scored,
@@ -186,6 +191,7 @@ def run():
         "pages_checked": len(checked), "prospects": len(prospects),
         "prospects_dofollow": sum(1 for p in prospects if p["dofollow"] == "yes"),
         "edu_gov": sum(1 for p in prospects if p["edu_gov"]),
+        "high_value": sum(1 for p in prospects if p["high_value"]),
         "commenter_domains": len(scored), "semrush_domains": [r["domain"] for r in top],
         "semrush_mode": config.SEMRUSH_MODE, "semrush_units_used": units,
         "semrush_data_missing_for": missing,

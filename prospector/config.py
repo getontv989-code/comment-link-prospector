@@ -57,6 +57,7 @@ SEMRUSH_UNIT_BUDGET = _int("SEMRUSH_UNIT_BUDGET", 0)
 SEMRUSH_ROWS = _int("SEMRUSH_ROWS", 30)               # backlink rows per domain
 SEMRUSH_DATABASE_HOST = os.environ.get("SEMRUSH_HOST", "https://api.semrush.com")
 SEMRUSH_UI_HOST = os.environ.get("SEMRUSH_UI_HOST", "https://www.semrush.com")
+HIGH_VALUE_AUTHORITY = _int("HIGH_VALUE_AUTHORITY", 60)  # dofollow on DA 60+ counts as high value
 MIN_AUTHORITY = _int("MIN_AUTHORITY", 30)             # page AS / authority floor for stage 6
 
 # Optional search APIs. Without any, the job uses seeds.txt plus HTML search scraping.
