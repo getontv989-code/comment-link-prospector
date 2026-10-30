@@ -127,7 +127,7 @@ def check_all(urls):
 
 def run():
     global _deadline
-    _deadline = None
+    _deadline = time.time() + config.CRAWL_MINUTES * 60  # whole-run budget for page checks
     t0 = time.time()
     config.OUT_DIR.mkdir(parents=True, exist_ok=True)
     seen = _load_state()
