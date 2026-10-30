@@ -91,6 +91,9 @@ def gather_targets(seen):
     return picked
 
 
+_deadline = None
+
+
 def _sample_link(r):
     """One commenter link and its rel, so a person can verify the dofollow call by eye."""
     links = sorted(r["links"], key=lambda l: (not l["dofollow"], l["kind"] != "author"))
@@ -100,7 +103,10 @@ def _sample_link(r):
 def check_all(urls):
     """Check pages in parallel, logging progress. Pages not started within
     CRAWL_MINUTES are skipped so a run always finishes and saves what it found."""
-    deadline = time.time() + config.CRAWL_MINUTES * 60
+    global _deadline
+    if _deadline is None:  # one budget for the whole run, shared by every check stage
+        _deadline = time.time() + config.CRAWL_MINUTES * 60
+    deadline = _deadline
     done = []
 
     def one(url):
@@ -120,6 +126,8 @@ def check_all(urls):
 
 
 def run():
+    global _deadline
+    _deadline = None
     t0 = time.time()
     config.OUT_DIR.mkdir(parents=True, exist_ok=True)
     seen = _load_state()

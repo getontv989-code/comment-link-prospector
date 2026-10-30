@@ -42,7 +42,7 @@ MAX_COMMENTS = _int("MAX_COMMENTS", 50)
 MAX_COMMENT_PAGES = _int("MAX_COMMENT_PAGES", 5)      # comment-page-N pagination depth
 USE_BROWSER = _bool("USE_BROWSER", True)              # headless fallback for lazy/JS comments
 BROWSERS = _int("BROWSERS", 3)                        # headless Chromium instances in parallel
-CRAWL_MINUTES = _int("CRAWL_MINUTES", 75)               # stop starting new pages after this
+CRAWL_MINUTES = _int("CRAWL_MINUTES", 75)               # whole run stops starting new page checks after this
 RECRAWL = _bool("RECRAWL", False)                     # ignore state/seen_pages.json
 
 # Pre-scoring and Semrush
